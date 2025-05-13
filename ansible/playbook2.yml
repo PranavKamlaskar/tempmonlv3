@@ -1,0 +1,68 @@
+---
+- hosts: gcp
+  vars:
+    db_user: dbusername
+    db_name: dbname
+    db_password: dbpassword
+
+  tasks:
+    - name: Install dependencies for PostgreSQL
+      become: true
+      apt:
+        name: "{{ item }}"
+        update_cache: true
+        state: latest
+      with_items:
+        - bash
+        - openssl
+        - libssl-dev
+        - libssl-doc
+
+    - name: Install PostgreSQL 
+      become: true
+      apt:
+        name: "{{ item }}"
+        update_cache: true
+        state: present
+      with_items:
+        - postgresql
+        - postgresql-contrib
+        - libpq-dev
+        - python3-psycopg2
+
+    - name: Ensure the PostgreSQL service is running
+      become: true
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Create the database specified in vars
+      become: true
+      become_user: postgres
+      postgresql_db:
+        name: "{{ db_name }}"
+        state: present
+
+    - name: Ensure user has access to the new database
+      become: true
+      become_user: postgres
+      postgresql_user:
+        db: "{{ db_name }}"
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        priv: ALL
+        state: present
+
+    - name: Ensure user does not have unnecessary permissions
+      become: true
+      become_user: postgres
+      postgresql_user:
+        name: "{{ db_user }}"
+        role_attr_flags: NOSUPERUSER,NOCREATEDB
+        state: present
+
+    - name: Add some dummy data to our database
+      become: true
+      become_user: postgres
+      shell: psql {{ db_name }} < /tmp/dump.sql

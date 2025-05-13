@@ -1,0 +1,13 @@
+[Unit]
+Description=Flask IoT App
+After=network.target postgresql.service
+
+[Service]
+User={{ ansible_user }}
+Environment="DB_PASSWORD=tempmonpass"
+WorkingDirectory=/opt/tempmon
+ExecStart=/opt/tempmon/venv/bin/python /opt/tempmon/app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

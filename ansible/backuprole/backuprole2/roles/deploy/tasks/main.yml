@@ -1,0 +1,63 @@
+---
+- name: Install base packages
+  apt:
+    name:
+      - postgresql
+      - python3-pip
+      - python3-venv
+    update_cache: yes
+
+- name: configure pgsql home
+  file:
+    path: /home/postgres
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: 0700
+
+- name: Configure PostgreSQL authentication
+  become: yes
+  template:
+    src: pg_hba.conf.j2
+    dest: /etc/postgresql/14/main/pg_hba.conf
+    owner: postgres
+    group: postgres
+    mode: 0640
+  notify: Reload PostgreSQL
+
+- name: Create DB user and database
+  become: yes
+  shell: |
+    sudo -u postgres env HOME=/home/postgres psql <<EOF
+    CREATE USER IF NOT EXISTS {{ db_user }} WITH PASSWORD '{{ db_password }}' CREATEDB LOGIN;
+    CREATE DATABASE IF NOT EXISTS tempmondb OWNER {{ db_user }};
+    GRANT ALL PRIVILEGES ON DATABASE tempmondb TO {{ db_user }};
+    EOF
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Deploy Flask app
+  copy:
+    src: "{{ item }}"
+    dest: "{{ app_dir }}/{{ item | regex_replace('^.*/', '') }}"
+    mode: preserve
+  loop: "{{ lookup('fileglob', '../../*', wantlist=True) | reject('match', '.*/(ansible|terraform|venv)/?') }}"
+
+- name: Ensure requirements.txt
+  copy: 
+    src: "/home/shobhakamlaskar/temp-mon3/requirements.txt"
+    dest: "{{ app_dir }}/requirements.txt"
+    mode: 0644
+
+- name: Install Python dependencies
+  pip:
+    requirements: "{{ app_dir }}/requirements.txt"
+    virtualenv: "{{ app_dir }}/venv"
+
+- name: Configure systemd service
+  template:
+    src: flaskapp.service.j2
+    dest: /etc/systemd/system/flaskapp.service
+    mode: 0644
+  notify: Restart flaskapp

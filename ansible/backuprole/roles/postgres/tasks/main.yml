@@ -1,0 +1,37 @@
+---
+- name: Install PostgreSQL and dependencies
+  apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+      - python3-psycopg2
+    state: present
+    update_cache: yes
+  tags: postgres
+
+- name: Configure PostgreSQL authentication
+  template:
+    src: pg_hba.conf.j2
+    dest: /etc/postgresql/14/main/pg_hba.conf
+    owner: postgres
+    group: postgres
+    mode: 0640
+  notify: Restart PostgreSQL
+  tags: postgres
+
+- name: Ensure PostgreSQL service
+  service:
+    name: postgresql
+    state: restarted
+    enabled: yes
+  tags: postgres
+
+- name: Create DB user and database (Idempotent)
+  become: yes
+  command: >
+    sudo -u postgres bash -c "
+    psql -c \"CREATE USER IF NOT EXISTS tempmon WITH PASSWORD 'tempmonpass' CREATEDB LOGIN;\"
+    psql -c \"CREATE DATABASE IF NOT EXISTS tempmondb OWNER tempmon;\""
+  args:
+    removes: /tmp/nonexistent_file  # Forces idempotency check
+  tags: postgres

@@ -1,0 +1,2 @@
+[gcp]
+34.56.9.165 ansible_user=shobhakamlaskar ansible_ssh_private_key_file=/home/shobhakamlaskar/.ssh/tempmon3 ansible_become_pass: pgpass

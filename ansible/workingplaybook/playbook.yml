@@ -1,0 +1,98 @@
+---
+- name: Deploy Flask App and Set Up PostgreSQL
+  hosts: gcp
+  become: yes
+  vars:
+    app_dir: /opt/flaskapp
+
+  tasks:
+
+    # ─── INSTALL PACKAGES ──────────────────────────────────────────────
+    - name: Ensure apt cache is up to date
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - python3
+          - python3-venv
+          - python3-pip
+          - rsync
+          - postgresql
+          - postgresql-client
+          - python3-psycopg2
+        state: present
+
+    - name: Ensure PostgreSQL is running
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    # ─── POSTGRES SETUP USING SHELL ────────────────────────────────────
+    - name: Create tempmon DB user and database (safe, idempotent)
+      shell: |
+        sudo -u postgres psql -c "DO \$\$ BEGIN
+          IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'tempmon') THEN
+            CREATE ROLE tempmon WITH LOGIN PASSWORD 'tempmonpass';
+          END IF;
+        END \$\$;"
+
+        sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname = 'tempmondb'" | grep -q 1 || \
+          sudo -u postgres createdb -O tempmon tempmondb
+      args:
+        executable: /bin/bash
+
+    # ─── DEPLOY FLASK APP ─────────────────────────────────────────────
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: "0755"
+
+    - name: Copy Flask app code
+      copy:
+        src: "../app.py"
+        dest: "{{ app_dir }}/app.py"
+        owner: ubuntu
+        mode: "0644"
+
+    - name: Copy .env file
+      copy:
+        src: "../.env"
+        dest: "{{ app_dir }}/.env"
+        owner: ubuntu
+        mode: "0644"
+
+    - name: Copy templates directory via rsync
+      synchronize:
+        src: "{{ playbook_dir }}/../templates/"
+        dest: "{{ app_dir }}/templates/"
+        rsync_opts:
+          - "--chmod=ugo=rx"
+        delete: no
+
+    - name: Create Python virtualenv
+      command: python3 -m venv {{ app_dir }}/venv
+      args:
+        creates: "{{ app_dir }}/venv/bin/activate"
+
+    - name: Install Python dependencies
+      pip:
+        name:
+          - flask
+          - python-dotenv
+          - psycopg2-binary
+          - requests
+        virtualenv: "{{ app_dir }}/venv"
+
+    - name: Launch Flask app in background (if not already running)
+      shell: |
+        pgrep -f "app.py" || nohup {{ app_dir }}/venv/bin/python {{ app_dir }}/app.py \
+          >> {{ app_dir }}/flask.log 2>&1 &
+      args:
+        chdir: "{{ app_dir }}"
+

@@ -1,0 +1,13 @@
+[Unit]
+Description=Flask IoT Monitoring Service
+After=network.target postgresql.service
+
+[Service]
+User={{ ansible_user }}
+WorkingDirectory={{ app_dir }}
+Environment="PATH={{ app_dir }}/venv/bin"
+ExecStart={{ app_dir }}/venv/bin/python {{ app_dir }}/app.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

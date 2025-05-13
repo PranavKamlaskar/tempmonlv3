@@ -1,0 +1,130 @@
+🚀 Phase 2: GCP VM Provisioning with Terraform
+This phase will:
+
+Automate creation of a Compute Engine VM.
+
+Configure networking and SSH access.
+
+Prepare the ground for your Ansible playbooks in Phase 3.
+
+🧱 Step-by-Step Plan for Phase 2
+✅ Step 1: Set Up GCP Environment
+Create a GCP Project
+Go to the GCP Console, create a new project, and note the project ID.
+
+Enable Required APIs:
+
+Compute Engine API
+
+IAM API (usually enabled by default)
+
+Create a Service Account for Terraform:
+
+Go to IAM & Admin > Service Accounts
+
+Create a new account (e.g. terraform-vm-admin)
+
+Grant role: Compute Admin
+
+Create and download a JSON key file
+
+Set Environment Variables (on your local machine):
+
+745  export GOOGLE_CLOUD_KEYFILE_JSON="/home/shobhakamlaskar/jsonkey/temp-monitor-3-b015dd756711.json" >> ~/.bashrc
+  746  export GOOGLE_PROJECT="temp-monitor-3" >> ~/.bashrc
+  747  export GOOGLE_REGION="us-central1" >> ~/.bashrc
+  748  export GOOGLE_ZONE="us-central1-a" >> ~/.bashrc
+
+
+cd temp-mon3/
+  755  ls
+  756  mkdir terraform
+  757  cd terraform/
+  758  touch main.tf variables.tf outputs.tf
+
+
+provider "google" {
+  credentials = file(var.credentials_file)
+  project     = var.project_id
+  region      = var.region
+  zone        = var.zone
+}
+
+resource "google_compute_instance" "iot_vm" {
+  name         = "iot-flask-vm"
+  machine_type = "e2-medium"
+
+  boot_disk {
+    initialize_params {
+      image = "ubuntu-os-cloud/ubuntu-2204-lts"
+    }
+  }
+
+  network_interface {
+    network       = "default"
+    access_config {}  # Enables external IP
+  }
+
+  metadata_startup_script = <<-EOT
+    #!/bin/bash
+    sudo apt-get update -y
+    sudo apt-get install -y python3-pip git
+  EOT
+
+  tags = ["http-server", "https-server"]
+}
+
+resource "google_compute_firewall" "default-allow-http" {
+  name    = "allow-http"
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["80", "5000"]
+  }
+
+  source_ranges = ["0.0.0.0/0"]
+  target_tags   = ["http-server"]
+}
+
+
+
+
+
+variable "project_id" {}
+variable "credentials_file" {}
+variable "region" {
+  default = "us-central1"
+}
+variable "zone" {
+  default = "us-central1-a"
+}
+
+
+
+
+
+
+
+output "instance_ip" {
+  value = google_compute_instance.iot_vm.network_interface[0].access_config[0].nat_ip
+}
+
+
+
+
+
+
+
+ Step 4: Run Terraform
+bash
+Copy
+Edit
+cd terraform/
+terraform init
+terraform apply
+Provide values for project_id and credentials_file when prompted.
+
+After a few minutes, Terraform will output your VM's external IP address.
+
+

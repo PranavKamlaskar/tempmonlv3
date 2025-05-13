@@ -1,0 +1,112 @@
+---
+- name: Deploy Flask App with PostgreSQL
+  hosts: gcp
+  become: yes
+  vars:
+    db_name: sensordb
+    db_user: sensoruser
+    db_password: yoursecurepassword
+    app_dir: /opt/flaskapp
+
+  tasks:
+    # ─── INSTALL ESSENTIALS ────────────────────────────────────
+    - name: Install required packages
+      apt:
+        name:
+          - python3
+          - python3-venv
+          - python3-pip
+          - postgresql
+          - postgresql-contrib
+          - libpq-dev
+          - python3-psycopg2
+        state: present
+        update_cache: yes
+
+    - name: Ensure PostgreSQL is running
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    # ─── POSTGRES SETUP (MINIMAL) ─────────────────────────────
+    - name: PostgreSQL setup
+      become: yes
+      block:
+      - name: Create database
+        command: >
+          sudo -u postgres psql -c "CREATE DATABASE {{ db_name }};"
+        changed_when: false
+
+    - name: Create user
+      command: >
+        sudo -u postgres psql -c 
+        "CREATE USER {{ db_user }} WITH PASSWORD '{{ db_password }}' NOSUPERUSER NOCREATEDB;"
+      changed_when: false
+
+    - name: Grant privileges
+      command: >
+        sudo -u postgres psql -c 
+        "GRANT ALL PRIVILEGES ON DATABASE {{ db_name }} TO {{ db_user }};"
+      changed_when: false
+
+    - name: Create table
+      command: >
+        sudo -u postgres psql -d {{ db_name }} -c 
+        "CREATE TABLE IF NOT EXISTS sensor_data (
+          id SERIAL PRIMARY KEY,
+          timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          temperature DECIMAL(5,2),
+          humidity DECIMAL(5,2)
+        ); ALTER TABLE sensor_data OWNER TO {{ db_user }};"
+      changed_when: false
+
+    # ─── DEPLOY FLASK APP (UNCHANGED FROM YOUR VERSION) ────────
+    - name: Create application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        owner: ubuntu
+        group: ubuntu
+        mode: "0755"
+
+    - name: Copy Flask app code
+      copy:
+        src: "../app.py"
+        dest: "{{ app_dir }}/app.py"
+        owner: ubuntu
+        mode: "0644"
+
+    - name: Copy .env file
+      copy:
+        src: "../.env"
+        dest: "{{ app_dir }}/.env"
+        owner: ubuntu
+        mode: "0640"  # More secure since it contains passwords
+
+    - name: Copy templates directory
+      synchronize:
+        src: "../templates/"
+        dest: "{{ app_dir }}/templates/"
+        rsync_opts:
+          - "--chmod=ugo=rx"
+
+    - name: Create Python virtualenv
+      command: python3 -m venv {{ app_dir }}/venv
+      args:
+        creates: "{{ app_dir }}/venv/bin/activate"
+
+    - name: Install Python dependencies
+      pip:
+        name:
+          - flask
+          - python-dotenv
+          - psycopg2-binary
+          - requests
+        virtualenv: "{{ app_dir }}/venv"
+
+    - name: Launch Flask app
+      shell: |
+        pgrep -f "app.py" || nohup {{ app_dir }}/venv/bin/python {{ app_dir }}/app.py >> {{ app_dir }}/flask.log 2>&1 &
+      args:
+        chdir: "{{ app_dir }}"

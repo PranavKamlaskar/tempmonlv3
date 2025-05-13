@@ -1,0 +1,24 @@
+---
+- name: Install PostgreSQL
+  apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+      - python3-psycopg2
+    state: present
+    update_cache: yes
+
+- name: Ensure PostgreSQL is started
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Create DB user and database
+  become: yes
+  command: >
+    sudo -u postgres bash -c "
+    psql -c \"CREATE USER IF NOT EXISTS flaskuser WITH PASSWORD 'flaskpass' CREATEDB LOGIN;\"
+    psql -c \"CREATE DATABASE IF NOT EXISTS flaskdb OWNER flaskuser;\""
+  args:
+    removes: /tmp/nonexistent_file  # Forces idempotency check

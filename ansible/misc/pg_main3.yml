@@ -1,0 +1,39 @@
+---
+- name: Install PostgreSQL
+  apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+      - python3-psycopg2
+    state: present
+    update_cache: yes
+
+- name: Configure PostgreSQL authentication
+  template:
+    src: pg_hba.conf.j2
+    dest: /etc/postgresql/14/main/pg_hba.conf  # Verify your PostgreSQL version
+    owner: postgres
+    group: postgres
+    mode: 0640
+  notify: Restart PostgreSQL  # This now references the handler
+
+- name: Ensure PostgreSQL is running
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Create DB user
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "tempmon"
+    password: "tempmonpass"
+    role_attr_flags: "CREATEDB,LOGIN"
+
+- name: Create DB
+  become: yes
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "tempmondb"
+    owner: "tempmon"

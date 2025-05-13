@@ -1,0 +1,10 @@
+---
+- name: Reload PostgreSQL
+  service:
+    name: postgresql
+    state: reloaded
+
+- name: Restart flaskapp
+  service:
+    name: flaskapp
+    state: restarted

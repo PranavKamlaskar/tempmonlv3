@@ -1,0 +1,19 @@
+<!doctype html>
+<html>
+  <head><title>IoT Dashboard</title></head>
+  <body>
+    <h1>Latest Sensor Readings</h1>
+    {% if data %}
+      <p>Time: {{ data[0] }}<br>
+         Temp: {{ data[1] }} °C<br>
+         Hum: {{ data[2] }} %</p>
+    {% else %}
+      <p>No data yet.</p>
+    {% endif %}
+
+    <h2>Controls</h2>
+    <a href="/control/on"><button>Turn ON</button></a>
+    <a href="/control/off"><button>Turn OFF</button></a>
+  </body>
+</html>
+

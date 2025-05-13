@@ -1,0 +1,4 @@
+# Encrypted password: ansible-vault encrypt_string
+db_user: tempmon
+db_password: tempmonpass 
+app_dir: /opt/tempmon

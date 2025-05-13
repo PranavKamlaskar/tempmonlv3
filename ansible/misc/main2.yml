@@ -1,0 +1,33 @@
+---
+- name: Install PostgreSQL
+  apt:
+    name:
+      - postgresql
+      - postgresql-contrib
+      - python3-psycopg2
+    state: present
+    update_cache: yes
+
+- name: Ensure PostgreSQL is started
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+- name: Create Postgres user
+  become_user: postgres
+  postgresql_user:
+    name: flaskuser
+    password: flaskpass
+    login: yes
+    createdb: yes
+
+- name: Create Postgres database
+  become_user: postgres
+  postgresql_db:
+    name: flaskdb
+    owner: flaskuser
+    encoding: UTF8
+    lc_collate: C
+    lc_ctype: C
+

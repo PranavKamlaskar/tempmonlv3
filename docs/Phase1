@@ -1,0 +1,224 @@
+sites
+Hardware
+
+ESP8266 module (e.g. NodeMCU or Wemos D1 Mini)
+
+Arduino UNO (optional—if you need additional GPIO or power regulation)
+
+DHT11 (or DHT22) temperature & humidity sensor
+
+Breadboard & jumper wires
+
+USB cable to program ESP8266
+
+Software on Your Laptop
+
+Arduino IDE (for flashing ESP8266)
+
+Python 3 (version ≥ 3.6)
+
+pip package manager
+
+VS Code (or any text editor)
+
+🔌 Step 1: Wire Up the Sensor to the ESP8266
+Power & Ground
+
+DHT11 VCC → ESP8266 3.3 V
+
+DHT11 GND → ESP8266 GND
+
+Data Line
+
+DHT11 DATA → ESP8266 GPIO2 (D4 on most NodeMCU boards)
+
+Pull-up Resistor
+
+Place a 4.7 KΩ resistor between DATA and VCC on the sensor’s breadboard pins.
+
+Tip: If using an Arduino UNO as an intermediate, you can wire the sensor to the UNO and then send data over Serial to the ESP8266—but direct wiring to ESP8266 is simpler here.
+
+🛠 Step 2: ESP8266 Firmware
+Install DHT Library
+
+In Arduino IDE, go to Sketch → Include Library → Manage Libraries and install “DHT sensor library” by Adafruit.
+
+Write Sketcheche__/rom models import SensorReading, Base
+
+#include <ESP8266WiFi.h>
+#include <DHT.h>
+
+#define DHTPIN D4
+#define DHTTYPE DHT11
+
+const char* ssid     = "hotspot";
+const char* password = "qwertyuiop";
+const char* serverIp = "34.133.31.182";  // your laptop’s IP
+const int   serverPort = 5000;
+
+DHT dht(DHTPIN, DHTTYPE);
+
+void setup() {
+  Serial.begin(115200);
+  dht.begin();
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nESP8266 connected");
+}
+
+void loop() {                         //Reads temperature (t) and humidity (h) from the DHT11.
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+
+  if (isnan(t) || isnan(h)) {
+    Serial.println("Failed to read from DHT");
+    return;
+  }
+
+  // Build JSON payload
+  String payload = "{\"temperature\": " + String(t) +
+                   ", \"humidity\": " + String(h) + "}";
+
+  // Send HTTP POST
+  WiFiClient client;
+  if (client.connect(serverIp, serverPort)) {
+    client.println("POST /data HTTP/1.1");
+    client.println("Host: " + String(serverIp));
+    client.println("Content-Type: application/json");
+    client.print("Content-Length: ");
+    client.println(payload.length());
+    client.println();
+    client.println(payload);
+    client.stop();
+  }
+
+  delay(10000);  // send every 10 seconds
+}
+
+Upload to ESP8266
+
+Select Tools→Board→NodeMCU 1.0 (ESP-12E) (or your model)
+
+Choose correct COM port, then click Upload.
+
+sudo apt install postgresql postgresql-contrib  # or `brew install postgresql`
+
+
+
+🐍 Step 3: Local Flask App
+Create a Project Folder
+
+bash
+Copy
+Edit
+mkdir iot-flask && cd iot-flask
+python3 -m venv venv
+source venv/bin/activate
+pip install Flask psycopg2-binary
+
+
+import os
+from flask import Flask, request, render_template, redirect
+from dotenv import load_dotenv
+import psycopg2
+import datetime
+
+load_dotenv()  # Load variables from .env file
+
+app = Flask(__name__)
+
+# Read DB connection info from .env ,Stores sensor data persistently
+conn = psycopg2.connect(
+    dbname=os.getenv("DB_NAME"),
+    user=os.getenv("DB_USER"),
+    password=os.getenv("DB_PASSWORD"),
+    host=os.getenv("DB_HOST"),
+    port=os.getenv("DB_PORT")
+)
+
+#Fetches the latest sensor reading from PostgreSQL.Renders an HTML template (index.html) to display the data.Why?Provides a real-time dashboard for users to
+monitor temperature/humidity.
+@app.route('/')
+def index():
+    cur = conn.cursor()
+    cur.execute("SELECT timestamp, temperature, humidity FROM sensor_data ORDER BY timestamp DESC LIMIT 1")
+    row = cur.fetchone()
+    return render_template('index.html', data=row)
+
+#Data Ingestion (/data) :Accepts POST requests from the ESP8266,Inserts the data into the sensor_data table with a timestamp.Why? Acts as the API endpoint for your ESP8266 to send sensor data.Returns HTTP status 204 (No Content) to acknowledge receipt without cluttering the response.
+@app.route('/data', methods=['POST'])
+def receive_data():
+    data = request.json
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO sensor_data (timestamp, temperature, humidity) VALUES (%s, %s, %s)",
+        (datetime.datetime.now(), data['temperature'], data['humidity'])
+    )
+    conn.commit()
+    return ('', 204)
+
+
+#When you click a button (e.g., "Turn ON") on the dashboard, it triggers this route (e.g., /control/on).Forwards the command to the ESP8266 ,Why?Lets you control hardware (e.g., an LED/relay) from the dashboard.Uses requests.post() to send commands to the ESP8266 (which you’ll program to handle these requests).
+@app.route('/control/<action>')
+def control(action):
+    esp_url = os.getenv("ESP_CONTROL_URL")
+    if esp_url:
+        import requests
+        try:
+            requests.post(f"{esp_url}/{action}")
+        except Exception as e:
+            print(f"Error contacting ESP: {e}")
+    return redirect('/')
+
+if __name__ == '__main__':
+    app.run(host=os.getenv("FLASK_HOST"), port=int(os.getenv("FLASK_PORT")))
+
+sudo -u postgres psql
+Initialize Postgres
+
+sql
+Copy
+Edit
+CREATE DATABASE yourdb;
+\c yourdb
+CREATE TABLE sensor_data (
+  id SERIAL PRIMARY KEY,
+  timestamp TIMESTAMP,
+  temperature REAL,
+  humidity REAL
+);
+Run Locally
+
+bash
+Copy
+Edit
+python app.py
+Ensure you can hit http://localhost:5000/ and see the “No data yet” page.
+
+Open your browser to http://<your‑server‑IP>:5000/ so ESP8266 can reach it.
+
+
+sudo -u postgres psql
+-- Create a user with a password
+CREATE USER iot_user WITH PASSWORD 'tempmonpass';
+
+-- Create the database owned by this user
+CREATE DATABASE iot_db OWNER iot_user;
+
+-- Grant privileges (optional but good practice)
+GRANT ALL PRIVILEGES ON DATABASE tempmondb TO tempmon;
+
+\q
+
+psql -U iot_user -d iot_db -h localhost -W
+CREATE TABLE sensor_data (
+  id SERIAL PRIMARY KEY,
+  timestamp TIMESTAMP,
+  temperature REAL,
+  humidity REAL
+);
+
+
